@@ -1,11 +1,18 @@
-﻿using Microsoft.EntityFrameworkCore;
+﻿using Microsoft.AspNetCore.Identity;
+using Microsoft.EntityFrameworkCore;
 using QRMenuAPI.Data;
 using QRMenuAPI.Models;
+using QRMenuAPI.Controllers;
 
 namespace QRMenuAPI;
 
 public class Program
 {
+    private readonly InitializeData _initializeData;
+    public Program(InitializeData initializeData)
+    {
+        _initializeData = initializeData;
+    }
     public static void Main(string[] args)
     {
         var builder = WebApplication.CreateBuilder(args);
@@ -20,13 +27,18 @@ public class Program
         builder.Services.AddDbContext<ApplicationContext>(options =>
             options.UseSqlServer(builder.Configuration.GetConnectionString("ApplicationDatabase"))); //eklendi
 
-        builder.Services.AddIdentityCore<ApplicationUser>().AddEntityFrameworkStores<ApplicationContext>(); //eklendi
+        //builder.Services.AddIdentityCore<ApplicationUser>().AddEntityFrameworkStores<ApplicationContext>(); //eklendi
 
         builder.Services.AddAuthentication();// eklendi
 
         builder.Services.AddAuthorization();
 
+        builder.Services.AddIdentity<ApplicationUser, IdentityRole>()
+                .AddEntityFrameworkStores<ApplicationContext>().AddDefaultTokenProviders();
+
+
         var app = builder.Build();
+
 
         // Configure the HTTP request pipeline.
         if (app.Environment.IsDevelopment())
