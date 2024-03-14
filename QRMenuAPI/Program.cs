@@ -3,18 +3,20 @@ using Microsoft.EntityFrameworkCore;
 using QRMenuAPI.Data;
 using QRMenuAPI.Models;
 using QRMenuAPI.Controllers;
+using Microsoft.AspNetCore.Identity;
+using static Microsoft.EntityFrameworkCore.DbLoggerCategory.Database;
 
 namespace QRMenuAPI;
 
 public class Program
 {
-    private readonly InitializeData _initializeData;
-    public Program(InitializeData initializeData)
-    {
-        _initializeData = initializeData;
-    }
     public static void Main(string[] args)
     {
+        State state;
+        IdentityRole identityRole;
+        ApplicationUser applicationUser;
+        Company? company = null;
+
         var builder = WebApplication.CreateBuilder(args);
 
         // Add services to the container.
@@ -27,7 +29,7 @@ public class Program
         builder.Services.AddDbContext<ApplicationContext>(options =>
             options.UseSqlServer(builder.Configuration.GetConnectionString("ApplicationDatabase"))); //eklendi
 
-        //builder.Services.AddIdentityCore<ApplicationUser>().AddEntityFrameworkStores<ApplicationContext>(); //eklendi
+        builder.Services.AddIdentityCore<ApplicationUser>().AddEntityFrameworkStores<ApplicationContext>(); //eklendi
 
         builder.Services.AddAuthentication();// eklendi
 
@@ -52,6 +54,74 @@ public class Program
         app.UseAuthentication();//eklendi
 
         app.MapControllers();
+        {
+            ApplicationContext? context = app.Services.CreateScope().ServiceProvider.GetService<ApplicationContext>();
+            if (context != null)
+            {
+                context.Database.Migrate();
+                if (context.States.Count() == 0)
+                {
+                    state = new State();
+                    state.Id = 0;
+                    state.Name = "Deleted";
+                    context.States.Add(state);
+                    state = new State();
+                    state.Id = 1;
+                    state.Name = "Active";
+                    context.States.Add(state);
+                    state = new State();
+                    state.Id = 2;
+                    state.Name = "Passive";
+                    context.States.Add(state);
+                }
+                if (context.Companies.Count() == 0)
+                {
+                    company = new Company();
+                    company.Address = "adres";
+                    company.EMail = "abc@def.com";
+                    company.Name = "Company";
+                    company.Phone = "1112223344";
+                    company.PostalCode = "12345";
+                    company.RegisterDate = DateTime.Today;
+                    company.StateId = 1;
+                    company.TaxNumber = "11111111111";
+                    context.Companies.Add(company);
+                }
+                context.SaveChanges();
+                RoleManager<IdentityRole>? roleManager = app.Services.CreateScope().ServiceProvider.GetService<RoleManager<IdentityRole>>();
+                if (roleManager != null)
+                {
+                    if (roleManager.Roles.Count() == 0)
+                    {
+                        identityRole = new IdentityRole("Administrator");
+                        roleManager.CreateAsync(identityRole).Wait();
+                        identityRole = new IdentityRole("CompanyAdministrator");
+                        roleManager.CreateAsync(identityRole).Wait();
+                    }
+                }
+                UserManager<ApplicationUser>? userManager = app.Services.CreateScope().ServiceProvider.GetService<UserManager<ApplicationUser>>();
+                if (userManager != null)
+                {
+                    if (userManager.Users.Count() == 0)
+                    {
+                        if (company != null)
+                        {
+                            applicationUser = new ApplicationUser();
+                            applicationUser.UserName = "Administrator";
+                            applicationUser.CompanyId = company.Id;
+                            applicationUser.Name = "Administrator";
+                            applicationUser.Email = "abc@def.com";
+                            applicationUser.PhoneNumber = "1112223344";
+                            applicationUser.RegisterDate = DateTime.Today;
+                            applicationUser.StateId = 1;
+                            userManager.CreateAsync(applicationUser, "Admin123!").Wait();
+                            userManager.AddToRoleAsync(applicationUser, "Administrator").Wait();
+                        }
+                    }
+                }
+            }
+
+        }
 
         app.Run();
     }

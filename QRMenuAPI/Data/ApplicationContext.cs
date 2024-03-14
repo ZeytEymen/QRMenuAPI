@@ -14,10 +14,10 @@ namespace QRMenuAPI.Data
         }
         public DbSet<Company>? Companies { get; set; }
         public DbSet<State>? States { get; set; }
-        public DbSet <Restaurant> Restaurants { get; set; }
-        public DbSet<RestaurantUser> RestaurantUsers { get; set; }
-        public DbSet<Category> Categories { get; set; }
-        public DbSet<Food> Foods { get; set; }
+        public DbSet<Restaurant>? Restaurants { get; set; }
+        public DbSet<RestaurantUser>? RestaurantUsers { get; set; }
+        public DbSet<Category>? Categories { get; set; }
+        public DbSet<Food>? Foods { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -27,6 +27,17 @@ namespace QRMenuAPI.Data
             modelBuilder.Entity<Food>().HasOne(u => u.State).WithMany().OnDelete(DeleteBehavior.NoAction);
             modelBuilder.Entity<Company>().HasOne(u => u.State).WithMany().OnDelete(DeleteBehavior.NoAction);
             modelBuilder.Entity<RestaurantUser>().HasKey(r => new { r.RestaurantId, r.UserId });
+            modelBuilder.Entity<State>().HasData
+                (
+                    new State { Id = 0, Name = "Deleted" },
+                    new State { Id = 1, Name = "Active" },
+                    new State { Id = 2, Name = "Passive" }
+                );
+            modelBuilder.Entity<IdentityRole>().HasData
+                (
+                    new IdentityRole("Admin"),
+                    new IdentityRole("CompanyAdmin")
+                );
             base.OnModelCreating(modelBuilder);
         }
     }

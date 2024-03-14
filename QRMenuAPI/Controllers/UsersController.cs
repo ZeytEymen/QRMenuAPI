@@ -9,6 +9,9 @@ using QRMenuAPI.Data;
 using QRMenuAPI.Models;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
+using Microsoft.AspNetCore.Authorization;
+using System.Data;
+using System.Security.Claims;
 
 namespace QRMenuAPI.Controllers
 {
@@ -17,140 +20,175 @@ namespace QRMenuAPI.Controllers
     public class UsersController : ControllerBase
     {
         private readonly SignInManager<ApplicationUser> _signInManager;
+        private readonly RoleManager<IdentityRole> _roleManager;
 
-        public UsersController(SignInManager<ApplicationUser> signInManager)
+        public UsersController(SignInManager<ApplicationUser> signInManager, RoleManager<IdentityRole> roleManager)
         {
             _signInManager = signInManager;
+            _roleManager = roleManager;
         }
 
-        [HttpPost("LogIn")]
-        public async Task<ActionResult> LogIn(string username, string password)
-        {
-            //var applicationUser = await _userManager.FindByNameAsync(username);
-            var applicationUser = _signInManager.UserManager.FindByNameAsync(username).Result;
-            if (applicationUser == null)
-            {
-                return NotFound();
-            }
+        #region HttpGet
 
-            var result =  await _signInManager.PasswordSignInAsync(applicationUser, password,false,false);
-            if (result.Succeeded)
-            {
-                return Ok("Giriş Yapıldı");
-            }
-            return Unauthorized("Sen yoksun aga aramızda");
-        }
-
-        [HttpPost("ForgotPassword")]
-        public async Task<ActionResult> ForgotPassword(string username, string newPassword)
-        {
-            var applicationUser = await _signInManager.UserManager.FindByNameAsync(username);
-            if (applicationUser == null)
-            {
-                return Unauthorized("Kullanıcı bulunamadı");
-            }
-            var token = await _signInManager.UserManager.GeneratePasswordResetTokenAsync(applicationUser);
-            // _signInManager.UserManager.re
-            //var result = await _signInManager.UserManager.ResetPasswordAsync(applicationUser, null, newPassword);
-            _signInManager.UserManager.RemovePasswordAsync(applicationUser).Wait();
-            var result = await _signInManager.UserManager.AddPasswordAsync(applicationUser,newPassword);
-            if (result.Succeeded)
-            {
-                return Ok("Şifre sıfırlama başarılı");
-            }
-            return BadRequest();
-        }
-        [HttpPost("ForgotPassword2")]
-        public async Task<ActionResult> ForgotPassword2(string username, string newPassword)
-        {
-            var applicationUser = await _signInManager.UserManager.FindByNameAsync(username);
-            if (applicationUser == null)
-            {
-                return Unauthorized("Kullanıcı bulunamadı");
-            }
-            var token = await _signInManager.UserManager.GeneratePasswordResetTokenAsync(applicationUser);
-            var result = await _signInManager.UserManager.ResetPasswordAsync(applicationUser, token, newPassword);
-            if (!result.Succeeded)
-            {
-                //return result.Errors.First().Description;
-            }
-            return Ok("Şifre sıfırlama başarılı");
-        }
-
-
-
-        // GET: api/Users
         [HttpGet]
-        public async Task<ActionResult<IEnumerable<ApplicationUser>>> GetUsers()
+        public ActionResult<List<ApplicationUser>> GetUsers()
         {
-            //return await _context.Users.ToListAsync();
-            return await _signInManager.UserManager.Users.ToListAsync();
+            return _signInManager.UserManager.Users.ToList();
         }
 
-        // GET: api/Users/5
         [HttpGet("{id}")]
-        public async Task<ActionResult<ApplicationUser>> GetApplicationUser(string id)
+        public ActionResult<ApplicationUser> GetApplicationUser(string id)
         {
-
-            var applicationUser = await _signInManager.UserManager.FindByIdAsync(id);
+            ApplicationUser applicationUser = _signInManager.UserManager.FindByIdAsync(id).Result;
 
             if (applicationUser == null)
-            {
                 return NotFound();
-            }
 
             return applicationUser;
         }
+        #endregion
 
-        // PUT: api/Users/5
-        // To protect from overposting attacks, see https://go.microsoft.com/fwlink/?linkid=2123754
-        [HttpPut("{id}")]
-        public ActionResult PutApplicationUser(string id, ApplicationUser applicationUser, string? password = null, string? currentPassword = null)
+        #region HttpPost
+
+        [Authorize(Roles = "CompanyAdministrator")]
+        [HttpPost]
+        public string PostApplicationUser(ApplicationUser applicationUser, string passWord)
         {
-            var existingApplicationUser = _signInManager.UserManager.FindByIdAsync(id).Result;
+            _signInManager.UserManager.CreateAsync(applicationUser, passWord).Wait();
+            return applicationUser.Id;
+        }
+
+        [HttpPost("LogIn")]
+        public bool LogIn(string userName, string passWord)
+        {
+            Microsoft.AspNetCore.Identity.SignInResult signInResult;
+            ApplicationUser applicationUser = _signInManager.UserManager.FindByNameAsync(userName).Result;
+            Claim claim;
+
+            if (applicationUser == null)
+            {
+                return false;
+            }
+            signInResult = _signInManager.PasswordSignInAsync(applicationUser, passWord, false, false).Result;
+            if (signInResult.Succeeded == true)
+            {
+                claim = new Claim("CompanyId", applicationUser.CompanyId.ToString());
+                _signInManager.UserManager.AddClaimAsync(applicationUser, claim).Wait();
+            }
+            return signInResult.Succeeded;
+        }
+
+        [HttpPost("RemovePassswordAddPassword")]
+        public void RemovePassswordAddPassword(string userName, string passWord)
+        {
+            ApplicationUser applicationUser = _signInManager.UserManager.FindByNameAsync(userName).Result;
+            if (applicationUser == null)
+            {
+                return;
+            }
+            _signInManager.UserManager.RemovePasswordAsync(applicationUser).Wait();
+            _signInManager.UserManager.AddPasswordAsync(applicationUser, passWord);
+        }
+
+
+        [HttpPost("GetPasswordResetToken")]
+        public string? GetPasswordResetToken(string userName)
+        {
+            ApplicationUser applicationUser = _signInManager.UserManager.FindByNameAsync(userName).Result;
+            if (applicationUser == null)
+            {
+                return null;
+            }
+            return _signInManager.UserManager.GeneratePasswordResetTokenAsync(applicationUser).Result;
+        }
+
+        [HttpPost("ValidateToken")]
+        public ActionResult<string?> ValidateToken(string userName, string token, string newPassWord)
+        {
+            ApplicationUser applicationUser = _signInManager.UserManager.FindByNameAsync(userName).Result;
+
+            if (applicationUser == null)
+            {
+                return NotFound();
+            }
+            IdentityResult identityResult = _signInManager.UserManager.ResetPasswordAsync(applicationUser, token, newPassWord).Result;
+            if (identityResult.Succeeded == false)
+            {
+                return identityResult.Errors.First().Description;
+            }
+            return Ok();
+        }
+
+        [HttpPost("AssignRole")]
+        public void AssignRole(string userId, string roleId)
+        {
+            ApplicationUser applicationUser = _signInManager.UserManager.FindByIdAsync(userId).Result;
+            IdentityRole identityRole = _roleManager.FindByIdAsync(roleId).Result;
+
+            _signInManager.UserManager.AddToRoleAsync(applicationUser, identityRole.Name).Wait();
+        }
+
+
+        #endregion
+
+        #region HttpPut
+
+        [Authorize(Roles = "CompanyAdministrator")]
+        [HttpPut("{id}")]
+        public OkResult PutApplicationUser(ApplicationUser applicationUser)
+        {
+            ApplicationUser existingApplicationUser = _signInManager.UserManager.FindByIdAsync(applicationUser.Id).Result;
 
             existingApplicationUser.Email = applicationUser.Email;
             existingApplicationUser.Name = applicationUser.Name;
             existingApplicationUser.PhoneNumber = applicationUser.PhoneNumber;
             existingApplicationUser.StateId = applicationUser.StateId;
-
-            _signInManager.UserManager.UpdateAsync(existingApplicationUser).Wait();
-
-            if (password != null && currentPassword != null)
-            {
-               IdentityResult identityResult = _signInManager.UserManager.ChangePasswordAsync(existingApplicationUser, currentPassword, password).Result;
-            }
-            return NoContent();
+            existingApplicationUser.UserName = applicationUser.UserName;
+            _signInManager.UserManager.UpdateAsync(existingApplicationUser);
+            return Ok();
         }
+        #endregion
 
-        // POST: api/Users
-        // To protect from overposting attacks, see https://go.microsoft.com/fwlink/?linkid=2123754
-        [HttpPost]
-        public async Task<ActionResult<ApplicationUser>> PostApplicationUser(ApplicationUser applicationUser, string password)
-        {
-            
-            await _signInManager.UserManager.CreateAsync(applicationUser, password);
-            return CreatedAtAction("GetApplicationUser", new { id = applicationUser.Id }, applicationUser);
-        }
+        #region HttpDelete
 
-        // DELETE: api/Users/5
+        [Authorize(Roles = "CompanyAdministrator")]
         [HttpDelete("{id}")]
-        public async Task<IActionResult> DeleteApplicationUser(string id)
+        public ActionResult DeleteApplicationUser(string id)
         {
-            var applicationUser =  await _signInManager.UserManager.FindByIdAsync(id);
-            //var applicationUser = await _context.Users.FindAsync(id);
+            ApplicationUser applicationUser = _signInManager.UserManager.FindByIdAsync(id).Result;
+
             if (applicationUser == null)
             {
                 return NotFound();
             }
             applicationUser.StateId = 0;
-            await _signInManager.UserManager.UpdateAsync(applicationUser);
-            return NoContent();
+            _signInManager.UserManager.UpdateAsync(applicationUser);
+            return Ok();
         }
+        #endregion
 
-        private bool ApplicationUserExists(string id)
-        {
-            return (_signInManager.UserManager.Users?.Any(e => e.Id == id)).GetValueOrDefault();
-        }
     }
 }
+
+//private bool ApplicationUserExists(string id)
+//{
+//    return (_signInManager.UserManager.Users?.Any(e => e.Id == id)).GetValueOrDefault();
+//}
+
+//[HttpPost("LogIn")]
+//public async Task<ActionResult> LogIn(string username, string password)
+//{
+//    //var applicationUser = await _userManager.FindByNameAsync(username);
+//    var applicationUser = _signInManager.UserManager.FindByNameAsync(username).Result;
+//    if (applicationUser == null)
+//    {
+//        return NotFound();
+//    }
+
+//    var result =  await _signInManager.PasswordSignInAsync(applicationUser, password,false,false);
+//    if (result.Succeeded)
+//    {
+//        return Ok("Giriş Yapıldı");
+//    }
+//    return Unauthorized("Sen yoksun aga aramızda");
+//}

@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using QRMenuAPI.Data;
 using QRMenuAPI.Models;
+using Microsoft.AspNetCore.Identity;
 
 namespace QRMenuAPI.Controllers
 {
@@ -15,7 +16,6 @@ namespace QRMenuAPI.Controllers
     public class FoodsController : ControllerBase
     {
         private readonly ApplicationContext _context;
-
         public FoodsController(ApplicationContext context)
         {
             _context = context;
